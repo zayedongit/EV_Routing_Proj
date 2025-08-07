@@ -6,7 +6,7 @@ from parsers.solomon_parser import parse_solomon_dataset
 from solver.task1_vrp_solver import VRPSolver
 from solver.task2_vrp_discharge_solver import VRPDischargeSolver
 from visualization.map_plotter import plot_routes
-from models.ev import GridStation
+from models.ev import GridStation # Correct import for GridStation
 
 def main():
     # Ensure the 'outputs' directory exists for saving plots
@@ -16,13 +16,13 @@ def main():
 
     # Example usage
     # Ensure 'data/C101.csv' exists relative to where main.py is run
-    # FIX: Changed file extension from .txt to .csv
     data_file = "data/C101.csv"
     depot, customers = parse_solomon_dataset(data_file)
 
     # Task 1: Basic VRP
     print("Solving basic VRP...")
-    solver1 = VRPSolver(depot, customers, vehicle_count=5)
+    # MODIFICATION: Increased vehicle_count to make the problem potentially more feasible
+    solver1 = VRPSolver(depot, customers, vehicle_count=10) # Changed from 5 to 10
     routes1 = solver1.solve()
 
     # Visualize routes
@@ -37,7 +37,8 @@ def main():
         GridStation(id=1, x=40, y=50),
         GridStation(id=2, x=60, y=60)
     ]
-    solver2 = VRPDischargeSolver(depot, customers, grid_stations, vehicle_count=5)
+    # MODIFICATION: Increased vehicle_count to make the problem potentially more feasible
+    solver2 = VRPDischargeSolver(depot, customers, grid_stations, vehicle_count=10) # Changed from 5 to 10
     routes2 = solver2.solve()
 
     # Visualize routes with grid stations

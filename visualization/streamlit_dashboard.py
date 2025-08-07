@@ -131,7 +131,6 @@ def plot_routes(depot: Depot, customers: List[Customer],
         customers: List of customer locations
         grid_stations: List of grid discharge stations
         routes: List of route solutions
-
     Returns:
         Matplotlib figure object
     """
@@ -166,21 +165,7 @@ def plot_routes(depot: Depot, customers: List[Customer],
                 path_x.append(depot.x)
                 path_y.append(depot.y)
             elif is_grid:
-                # Find the correct grid station based on its ID or index
-                # Assuming node_data['node'] directly corresponds to the grid station ID
-                # or that grid stations are indexed sequentially after customers
-                # This part might need adjustment based on how 'node' maps to grid_stations
-                # For now, assuming node corresponds to an index in grid_stations
-                # The original code used `grid_stations[node - len(customers) - 1]`
-                # which implies a specific indexing scheme. Let's stick to that for now.
-                # If 'node' directly refers to the grid station's ID, you'd need to search for it.
-                # For simplicity, assuming node_data['node'] is the index of the grid station in the list.
-                # Reverting to original logic for grid station lookup as it implies a specific structure.
                 try:
-                    # Adjusting for 0-based indexing if node starts from customer_count + 1
-                    # This assumes grid station nodes are numbered sequentially after customer nodes
-                    # e.g., if 100 customers, customer nodes are 1-100, grid stations start from 101, 102...
-                    # and grid_stations list is 0-indexed.
                     gs_index = node - len(customers) - 1
                     if 0 <= gs_index < len(grid_stations):
                         gs = grid_stations[gs_index]
@@ -191,7 +176,6 @@ def plot_routes(depot: Depot, customers: List[Customer],
                 except IndexError:
                     st.warning(f"Grid station with node index {node} not found. Skipping.")
             else:  # Customer
-                # Customer nodes are typically 1-indexed, so subtract 1 for list access
                 try:
                     cust = customers[node - 1]
                     path_x.append(cust.x)
@@ -200,7 +184,6 @@ def plot_routes(depot: Depot, customers: List[Customer],
                     st.warning(f"Customer with node index {node} not found. Skipping.")
 
         ax.plot(path_x, path_y, c=color, linestyle='-', linewidth=2, label=f"EV {i+1}", zorder=3)
-        # Plot intermediate stops as smaller dots
         ax.scatter(path_x[1:-1], path_y[1:-1], c=color, s=30, zorder=4)
 
     ax.set_xlabel('X Coordinate')
