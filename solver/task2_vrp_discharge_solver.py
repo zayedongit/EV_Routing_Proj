@@ -1,12 +1,40 @@
+"""Legacy task 2: genetic algorithm for VRP with grid discharge.
+
+Kept as a baseline so the newer solvers have something to be compared against.
+New work should use :mod:`evrp.solvers` for routing and :mod:`evrp.schedule` /
+:mod:`evrp.v2g` for the grid-discharge decision, which are checked against an
+independent simulator instead of grading their own output.
+
+Three bugs were fixed here; all three were silent, and the third made the
+solver useless on real instances:
+
+1. **Fitness ignored routes past the fleet size.**  ``for i, route in
+   enumerate(solution): if route and i < len(self.vehicles)`` skipped the tail
+   of the solution, so those customers were free to serve and free to leave
+   unserved.  On C101 the search converged to *cost 0 with zero customers
+   served* -- a perfect score for doing nothing.  Every route is now costed,
+   and routes beyond the fleet are penalised as extra vehicles.
+2. **The formatter dropped the same routes**, so even a good solution lost
+   customers on the way out.
+3. **The initial population was 100 identical solutions.**  The code shuffled
+   a list and then discarded it, calling a deterministic nearest-neighbour
+   construction every time; crossover between identical parents does nothing.
+   Construction is now randomised, and seeded so runs stay reproducible.
+"""
+
 import numpy as np
 import random
 import copy
 from typing import List, Dict, Tuple, Optional
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+#: Cost charged for each route beyond the available fleet.  Large enough to
+#: dominate any distance saving, small enough not to swamp the gradient.
+EXTRA_VEHICLE_PENALTY = 5000.0
+INFEASIBLE_ROUTE_PENALTY = 1000.0
+UNASSIGNED_CUSTOMER_PENALTY = 2000.0
 
 class Customer:
     def __init__(self, id: int, x: float, y: float, demand: int, ready_time: int, due_time: int, service_time: int):
@@ -34,18 +62,22 @@ class Vehicle:
 
 class VRPSolver:
     def __init__(self, customers: List[Customer], depot: Customer, vehicles: List[Vehicle], 
-                 enable_discharge: bool = False, peak_hours: Tuple[int, int] = (17, 20)):
+                 enable_discharge: bool = False, peak_hours: Tuple[int, int] = (17, 20),
+                 seed: Optional[int] = 42, max_iterations: Optional[int] = None):
+        if not vehicles:
+            raise ValueError("at least one vehicle is required")
         self.customers = customers
         self.depot = depot
         self.vehicles = vehicles
         self.enable_discharge = enable_discharge
         self.peak_hours = peak_hours
+        self.rng = random.Random(seed)
         self.distance_matrix = self._calculate_distance_matrix()
         self.best_solution = None
         self.best_cost = float('inf')
         
         # Solver parameters - made more permissive
-        self.max_iterations = 2000  # Increased from typical 1000
+        self.max_iterations = max_iterations if max_iterations is not None else 2000
         self.population_size = 100   # Increased population
         self.mutation_rate = 0.15
         self.crossover_rate = 0.85
@@ -163,8 +195,14 @@ class VRPSolver:
             
         return benefit
     
-    def _generate_initial_solution(self) -> List[List[int]]:
-        """Generate initial solution using nearest neighbor heuristic"""
+    def _generate_initial_solution(self, randomness: int = 0) -> List[List[int]]:
+        """Nearest-neighbour construction.
+
+        ``randomness`` samples uniformly among the ``randomness + 1`` nearest
+        feasible customers instead of always taking the closest.  Without it
+        every member of the population is the same solution and the genetic
+        operators have nothing to recombine.
+        """
         unvisited = set(range(1, len(self.customers) + 1))
         routes = []
         
@@ -176,20 +214,18 @@ class VRPSolver:
             current_pos = 0  # depot
             
             while unvisited:
-                # Find nearest feasible customer
-                best_customer = None
-                best_distance = float('inf')
-                
-                for customer_idx in unvisited:
-                    temp_route = route + [customer_idx]
-                    if self._is_feasible_route(temp_route, vehicle):
-                        distance = self.distance_matrix[current_pos][customer_idx]
-                        if distance < best_distance:
-                            best_distance = distance
-                            best_customer = customer_idx
-                
-                if best_customer is None:
+                # Rank feasible extensions by distance, then sample among the
+                # closest few so that different population members differ.
+                feasible = [
+                    (self.distance_matrix[current_pos][c], c)
+                    for c in unvisited
+                    if self._is_feasible_route(route + [c], vehicle)
+                ]
+                if not feasible:
                     break
+                feasible.sort()
+                pool = feasible[: randomness + 1]
+                best_customer = self.rng.choice(pool)[1]
                     
                 route.append(best_customer)
                 unvisited.remove(best_customer)
@@ -200,7 +236,11 @@ class VRPSolver:
                 
         # Handle unvisited customers with relaxed constraints
         if unvisited:
-            logger.warning(f"Could not visit {len(unvisited)} customers with strict constraints. Attempting relaxed assignment.")
+            # Debug, not warning: this fires once per population member during
+            # construction and drowns out the messages that matter.
+            logger.debug(
+                "construction left %d customers unvisited; relaxing", len(unvisited)
+            )
             
             # Try to force assignment to available vehicles
             for customer_idx in list(unvisited):
@@ -235,6 +275,32 @@ class VRPSolver:
                     
         return routes
     
+    def _evaluate(self, solution: List[List[int]]) -> float:
+        """Cost of a whole solution, including everything it failed to do.
+
+        Every non-empty route is costed -- including routes past the fleet
+        size, which are charged an extra-vehicle penalty rather than ignored.
+        Ignoring them was what let the search score a solution that served
+        nobody as if it were free.
+        """
+        total_cost = 0.0
+        for i, route in enumerate(solution):
+            if not route:
+                continue
+            vehicle = self.vehicles[i] if i < len(self.vehicles) else self.vehicles[-1]
+            if i >= len(self.vehicles):
+                total_cost += EXTRA_VEHICLE_PENALTY
+            if self._is_feasible_route(route, vehicle):
+                total_cost += self._calculate_route_cost(route, vehicle)
+            else:
+                total_cost += INFEASIBLE_ROUTE_PENALTY + sum(
+                    self.customers[c - 1].demand for c in route
+                )
+
+        assigned = {c for route in solution for c in route}
+        unassigned = set(range(1, len(self.customers) + 1)) - assigned
+        return total_cost + len(unassigned) * UNASSIGNED_CUSTOMER_PENALTY
+
     def _mutate_solution(self, routes: List[List[int]]) -> List[List[int]]:
         """Apply mutation to a solution"""
         if not routes or not any(routes):
@@ -243,36 +309,36 @@ class VRPSolver:
         mutated = copy.deepcopy(routes)
         
         # Different mutation strategies
-        mutation_type = random.choice(['swap', 'relocate', 'two_opt'])
+        mutation_type = self.rng.choice(['swap', 'relocate', 'two_opt'])
         
         if mutation_type == 'swap':
             # Swap two customers
-            route_idx = random.choice([i for i, r in enumerate(mutated) if len(r) > 1])
+            route_idx = self.rng.choice([i for i, r in enumerate(mutated) if len(r) > 1])
             route = mutated[route_idx]
             if len(route) >= 2:
-                i, j = random.sample(range(len(route)), 2)
+                i, j = self.rng.sample(range(len(route)), 2)
                 route[i], route[j] = route[j], route[i]
                 
         elif mutation_type == 'relocate':
             # Move customer to different position
             if len(mutated) > 1:
-                from_route_idx = random.choice([i for i, r in enumerate(mutated) if len(r) > 0])
-                to_route_idx = random.choice(range(len(mutated)))
+                from_route_idx = self.rng.choice([i for i, r in enumerate(mutated) if len(r) > 0])
+                to_route_idx = self.rng.choice(range(len(mutated)))
                 
                 from_route = mutated[from_route_idx]
                 to_route = mutated[to_route_idx]
                 
                 if from_route:
-                    customer = from_route.pop(random.randint(0, len(from_route) - 1))
-                    insert_pos = random.randint(0, len(to_route))
+                    customer = from_route.pop(self.rng.randint(0, len(from_route) - 1))
+                    insert_pos = self.rng.randint(0, len(to_route))
                     to_route.insert(insert_pos, customer)
                     
         elif mutation_type == 'two_opt':
             # 2-opt improvement within a route
-            route_idx = random.choice([i for i, r in enumerate(mutated) if len(r) > 3])
+            route_idx = self.rng.choice([i for i, r in enumerate(mutated) if len(r) > 3])
             route = mutated[route_idx]
             if len(route) > 3:
-                i, j = sorted(random.sample(range(1, len(route)), 2))
+                i, j = sorted(self.rng.sample(range(1, len(route)), 2))
                 route[i:j+1] = route[i:j+1][::-1]
                 
         return mutated
@@ -332,13 +398,10 @@ class VRPSolver:
             logger.info("Generating initial population...")
             population = []
             
-            for _ in range(self.population_size):
-                # Randomize customer order for diversity
-                shuffled_customers = list(range(1, len(self.customers) + 1))
-                random.shuffle(shuffled_customers)
-                
-                # Create routes using nearest neighbor with randomization
-                solution = self._generate_initial_solution()
+            for i in range(self.population_size):
+                # The first member is the pure greedy solution; the rest are
+                # progressively more randomised so the population is diverse.
+                solution = self._generate_initial_solution(randomness=min(i, 5))
                 if solution:
                     population.append(solution)
                     
@@ -357,25 +420,7 @@ class VRPSolver:
                 # Evaluate population
                 fitness_scores = []
                 for solution in population:
-                    total_cost = 0
-                    valid_routes = 0
-                    
-                    for i, route in enumerate(solution):
-                        if route and i < len(self.vehicles):
-                            if self._is_feasible_route(route, self.vehicles[i]):
-                                total_cost += self._calculate_route_cost(route, self.vehicles[i])
-                                valid_routes += 1
-                            else:
-                                # Penalty for infeasible routes
-                                total_cost += 1000 + sum(self.customers[c-1].demand for c in route)
-                    
-                    # Penalty for unassigned customers
-                    assigned_customers = set()
-                    for route in solution:
-                        assigned_customers.update(route)
-                    unassigned_penalty = len(set(range(1, len(self.customers) + 1)) - assigned_customers) * 2000
-                    
-                    fitness_scores.append(total_cost + unassigned_penalty)
+                    fitness_scores.append(self._evaluate(solution))
                 
                 # Track best solution
                 current_best_idx = np.argmin(fitness_scores)
@@ -401,13 +446,13 @@ class VRPSolver:
                 new_population = elite[:]
                 
                 while len(new_population) < self.population_size:
-                    if random.random() < self.crossover_rate and len(elite) > 1:
-                        parent1, parent2 = random.sample(elite, 2)
+                    if self.rng.random() < self.crossover_rate and len(elite) > 1:
+                        parent1, parent2 = self.rng.sample(elite, 2)
                         child = self._crossover_solutions(parent1, parent2)
                     else:
-                        child = copy.deepcopy(random.choice(elite))
+                        child = copy.deepcopy(self.rng.choice(elite))
                     
-                    if random.random() < self.mutation_rate:
+                    if self.rng.random() < self.mutation_rate:
                         child = self._mutate_solution(child)
                     
                     new_population.append(child)
@@ -448,7 +493,7 @@ class VRPSolver:
         total_cost = 0
         
         for i, route in enumerate(routes):
-            if route and i < len(self.vehicles):
+            if route:
                 route_distance = 0
                 current_pos = 0
                 
@@ -464,7 +509,8 @@ class VRPSolver:
                 route_distance += self.distance_matrix[current_pos][0]
                 formatted_route.append(0)  # depot
                 
-                route_cost = self._calculate_route_cost(route, self.vehicles[i])
+                vehicle = self.vehicles[i] if i < len(self.vehicles) else self.vehicles[-1]
+                route_cost = self._calculate_route_cost(route, vehicle)
                 
                 formatted_routes.append({
                     'vehicle_id': i,
@@ -485,15 +531,23 @@ class VRPSolver:
         all_customers = set(range(1, len(self.customers) + 1))
         unserved = all_customers - served_customers
         
+        vehicles_used = len([r for r in formatted_routes if r['customers_served'] > 0])
+        over_fleet = max(0, vehicles_used - len(self.vehicles))
         result = {
             "routes": formatted_routes,
             "total_cost": total_cost,
             "total_distance": total_distance,
-            "vehicles_used": len([r for r in formatted_routes if r['customers_served'] > 0]),
+            "vehicles_used": vehicles_used,
+            "vehicles_available": len(self.vehicles),
+            "vehicles_over_fleet": over_fleet,
             "customers_served": len(served_customers),
-            "unserved_customers": list(unserved) if unserved else [],
-            "success": len(unserved) == 0
+            "unserved_customers": sorted(unserved) if unserved else [],
+            "success": len(unserved) == 0 and over_fleet == 0,
         }
+        if over_fleet:
+            logger.warning(
+                "solution needs %d more vehicles than the fleet has", over_fleet
+            )
         
         if unserved:
             logger.warning(f"Could not serve {len(unserved)} customers: {unserved}")
@@ -501,3 +555,9 @@ class VRPSolver:
             logger.info(f"Successfully served all {len(served_customers)} customers")
             
         return result
+
+
+#: The original ``main.py`` imported the discharge solver under this name while
+#: the class was called ``VRPSolver``, so the script crashed on import.  Both
+#: names now resolve to the same class.
+VRPDischargeSolver = VRPSolver

@@ -1,0 +1,42 @@
+{
+  "name": "v2g-r201",
+  "instance_file": "data/R201.csv",
+  "fleet_size": 25,
+  "n_stations": 8,
+  "station_strategy": "kmeans",
+  "station_power_kw": 50.0,
+  "vehicle": {
+    "payload_capacity": 1000,
+    "battery_kwh": 60.0,
+    "reserve_soc": 0.1,
+    "speed_km_per_min": 1.0,
+    "onboard_charge_power_kw": 22.0,
+    "max_route_duration": null
+  },
+  "energy": {
+    "base_kwh_per_km": 0.22,
+    "payload_kwh_per_km_per_kg": 0.00025,
+    "regen_efficiency": 1.0
+  },
+  "charging": {
+    "curve": "piecewise",
+    "cc_end_soc": 0.8,
+    "taper_power_fraction": 0.45,
+    "fixed_time_min": 2.0,
+    "energy_price": 0.18,
+    "v2g_price": 0.55,
+    "v2g_enabled": true,
+    "v2g_min_soc": 0.35,
+    "distance_cost_per_km": 0.25
+  },
+  "solver": {
+    "time_limit_s": 30.0,
+    "seed": 42,
+    "first_solution": "PATH_CHEAPEST_ARC",
+    "metaheuristic": "GUIDED_LOCAL_SEARCH",
+    "station_copies": 2,
+    "model_charge_power_mode": "conservative",
+    "vehicle_fixed_cost": 0.0,
+    "log_search": false
+  }
+}

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Optional
-from utils.distance import haversine_distance
+from utils.distance import euclidean_distance
 
 @dataclass
 class Customer:
@@ -61,7 +61,7 @@ class ElectricVehicle:
         
     def move_to(self, x: float, y: float, current_x: float, current_y: float):
         """Update vehicle state after moving to new coordinates"""
-        distance = haversine_distance(current_x, current_y, x, y)
+        distance = euclidean_distance(current_x, current_y, x, y)
         energy_used = distance * self.consumption_rate
         self.current_soc -= energy_used
         self.current_time += distance / 50 * 60  # Assuming 50km/h speed

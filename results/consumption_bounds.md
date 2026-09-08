@@ -1,0 +1,11 @@
+| instance | consumption_bound | distance_km | vehicles | charging_stops | customers_served | violations | feasible |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| C101 | worst | 997.06 | 12 | 5 | 100 | 0 | True |
+| C201 | worst | 703.83 | 5 | 11 | 100 | 0 | True |
+| R201 | worst | 1309.14 | 12 | 16 | 100 | 0 | True |
+| C101 | average | 930.02 | 11 | 2 | 100 | 0 | True |
+| C201 | average | 722.77 | 6 | 9 | 100 | 0 | True |
+| R201 | average | 1248.95 | 10 | 15 | 100 | 0 | True |
+| C101 | empty | 838.21 | 10 | 1 | 100 | 2 | False |
+| C201 | empty | 694.03 | 5 | 8 | 100 | 14 | False |
+| R201 | empty | 1227.38 | 11 | 10 | 100 | 9 | False |

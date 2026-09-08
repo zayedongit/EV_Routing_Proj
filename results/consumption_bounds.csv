@@ -1,0 +1,10 @@
+scenario,instance,solver,seed,time_limit_s,runtime_s,feasible,distance_km,vehicles,customers_served,customers_total,charging_stops,energy_kwh,charged_kwh,charge_time_min,min_soc_kwh,violations,battery_kwh,status,note,consumption_bound
+bound-worst-C101,C101,ortools,42,20.0,20.003,True,997.056,12,100,100,5,225.446,17.862,31.43,3.353,0,25.0,success,,worst
+bound-worst-C201,C201,ortools,42,20.0,20.002,True,703.826,5,100,100,11,165.554,85.453,146.91,4.966,0,25.0,success,,worst
+bound-worst-R201,R201,ortools,42,20.0,60.036,True,1309.144,12,100,100,16,294.897,113.495,223.94,8.296,0,25.0,success,,worst
+bound-average-C101,C101,ortools,42,20.0,20.036,True,930.018,11,100,100,2,210.308,8.677,15.55,2.573,0,25.0,success,,average
+bound-average-C201,C201,ortools,42,20.0,20.013,True,722.768,6,100,100,9,169.352,66.447,105.02,2.892,0,25.0,success,,average
+bound-average-R201,R201,ortools,42,20.0,40.03,True,1248.951,10,100,100,15,282.823,113.809,213.32,5.038,0,25.0,success,,average
+bound-empty-C101,C101,ortools,42,20.0,20.002,False,838.205,10,100,100,1,190.052,7.546,11.06,1.798,2,25.0,success,,empty
+bound-empty-C201,C201,ortools,42,20.0,20.002,False,694.03,5,100,100,8,163.191,50.164,76.2,-1.188,14,25.0,success,,empty
+bound-empty-R201,R201,ortools,42,20.0,20.01,False,1227.38,11,100,100,10,277.217,57.349,89.25,1.272,9,25.0,success,,empty

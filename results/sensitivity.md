@@ -1,0 +1,17 @@
+| instance | battery_kwh | solver | distance_km | vehicles | charging_stops | charge_time_min | customers_served | feasible |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| C101 | 80.00 | ortools | 828.94 | 10 | 0 | 0.00 | 100 | True |
+| R101 | 80.00 | ortools | 1704.61 | 23 | 0 | 0.00 | 100 | True |
+| RC101 | 80.00 | ortools | 1713.54 | 18 | 0 | 0.00 | 100 | True |
+| C101 | 40.00 | ortools | 828.94 | 10 | 0 | 0.00 | 100 | True |
+| R101 | 40.00 | ortools | 1704.61 | 23 | 0 | 0.00 | 100 | True |
+| RC101 | 40.00 | ortools | 1740.22 | 19 | 0 | 0.00 | 100 | True |
+| C101 | 25.00 | ortools | 937.21 | 11 | 4 | 27.37 | 100 | True |
+| R101 | 25.00 | ortools | 1769.13 | 22 | 5 | 32.19 | 100 | True |
+| RC101 | 25.00 | ortools | 1878.78 | 20 | 8 | 83.13 | 99 | False |
+| C101 | 18.00 | ortools | 969.96 | 13 | 9 | 84.50 | 93 | False |
+| R101 | 18.00 | ortools | 1780.22 | 25 | 9 | 87.00 | 96 | False |
+| RC101 | 18.00 | ortools | 1704.33 | 19 | 12 | 164.81 | 87 | False |
+| C101 | 14.00 | ortools | 903.57 | 12 | 12 | 121.16 | 85 | False |
+| R101 | 14.00 | ortools | 1376.97 | 19 | 14 | 164.56 | 80 | False |
+| RC101 | 14.00 | ortools | 1061.66 | 15 | 9 | 125.64 | 59 | False |

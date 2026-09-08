@@ -2,7 +2,6 @@
 Utility functions for loading and generating VRP data
 """
 import os
-import numpy as np
 from solver.task2_vrp_discharge_solver import Customer
 
 def create_sample_solomon_data():

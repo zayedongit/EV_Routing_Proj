@@ -6,6 +6,9 @@ from typing import List, Dict, Any
 
 # Assuming these models are correctly defined in your 'models/ev.py' file
 from models.ev import Depot, Customer, GridStation
+# plot_routes was used but never imported: the dashboard raised NameError
+# as soon as it tried to draw.
+from visualization.map_plotter import plot_routes
 
 def show_dashboard(depot: Depot, customers: List[Customer],
                    grid_stations: List[GridStation], routes: List[Dict[str, Any]]) -> None:

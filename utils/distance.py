@@ -1,49 +1,46 @@
+"""Distance helpers.
+
+Historical note: this module used to export a function called
+``haversine_distance`` that computed a plain Euclidean distance on the
+Solomon x/y grid.  The name was wrong, not the behaviour -- benchmark
+coordinates are planar, so Euclidean is the right metric there, and the
+published Solomon results depend on it.
+
+Rather than silently keep a misnamed function, the two metrics are now
+separate: :func:`euclidean_distance` is what planar instances use, and
+:func:`haversine_distance` really is the great-circle distance, for the day
+this runs on real latitude/longitude data.  ``planar_distance`` is kept as an
+alias for callers that used the old name for its old behaviour.
+
+For bulk work prefer :mod:`evrp.instance`, which builds the whole matrix in
+one vectorised NumPy pass instead of calling a Python function n^2 times.
+"""
+
+from __future__ import annotations
+
 import math
 
+EARTH_RADIUS_KM = 6371.0088
+
+
+def euclidean_distance(x1: float, y1: float, x2: float, y2: float) -> float:
+    """Straight-line distance between two points on a plane."""
+    return math.hypot(x2 - x1, y2 - y1)
+
+
+def manhattan_distance(x1: float, y1: float, x2: float, y2: float) -> float:
+    """Grid distance: a better proxy than Euclidean for dense street networks."""
+    return abs(x2 - x1) + abs(y2 - y1)
+
+
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculates the Haversine distance between two points on Earth
-    given their latitudes and longitudes.
+    """Great-circle distance in kilometres between two lat/lon points."""
+    lat1_r, lat2_r = math.radians(lat1), math.radians(lat2)
+    dlat = lat2_r - lat1_r
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2.0) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2.0) ** 2
+    return 2.0 * EARTH_RADIUS_KM * math.asin(math.sqrt(min(1.0, max(0.0, a))))
 
-    Args:
-        lat1 (float): Latitude of the first point.
-        lon1 (float): Longitude of the first point.
-        lat2 (float): Latitude of the second point.
-        lon2 (float): Longitude of the second point.
 
-    Returns:
-        float: The distance in kilometers.
-    """
-    # Assuming x, y coordinates are directly used for Euclidean distance as per traceback
-    # If this is truly Haversine, the formula needs to be different.
-    # Based on the error and the formula shown in the traceback:
-    # math.sqrt((x2 - x1)^2 + (y2 - y1)^2)
-    # This suggests it's a Euclidean distance function, not Haversine.
-    # Let's assume the intent is Euclidean distance for now, given the error.
-
-    # FIX: Ensure the value inside sqrt is non-negative to prevent domain error
-    # Use max(0, ...) to handle potential floating-point inaccuracies that result in tiny negative numbers.
-    squared_diff_x = (lat2 - lat1)**2 # Using lat/lon as x/y as per traceback context
-    squared_diff_y = (lon2 - lon1)**2
-
-    # Ensure the sum is not negative before taking the square root
-    distance = math.sqrt(max(0, squared_diff_x + squared_diff_y))
-    
-    return distance
-
-# If you intended a true Haversine distance, the function should look like this:
-# def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-#     R = 6371  # Radius of Earth in kilometers
-#     lat1_rad = math.radians(lat1)
-#     lon1_rad = math.radians(lon1)
-#     lat2_rad = math.radians(lat2)
-#     lon2_rad = math.radians(lon2)
-
-#     dlon = lon2_rad - lon1_rad
-#     dlat = lat2_rad - lat1_rad
-
-#     a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
-#     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-#     distance = R * c
-#     return distance
+#: Backwards-compatible alias for the planar metric the project actually uses.
+planar_distance = euclidean_distance
