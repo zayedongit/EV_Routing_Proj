@@ -257,7 +257,7 @@ class Scenario:
         kwargs: dict[str, Any] = {}
         for key, klass in nested.items():
             kwargs[key] = klass(**raw.pop(key)) if key in raw else klass()
-        unknown = set(raw) - {f for f in cls.__dataclass_fields__} 
+        unknown = set(raw) - {f for f in cls.__dataclass_fields__}
         if unknown:
             raise ConfigError(f"unknown scenario keys: {sorted(unknown)}")
         scenario = cls(**raw, **kwargs)
