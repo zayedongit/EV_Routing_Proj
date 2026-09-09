@@ -30,8 +30,13 @@ If a station carries an explicit peak window, selling into it is only worth
 money while the vehicle is actually plugged in during that window.  That makes
 the decision "does this stop operate in V2G mode?" a binary, and the model
 becomes a small MILP (big-M linking the service start to the peak window).
-Routes have a handful of stops, so this stays cheap.  With no peak windows
-declared the binaries disappear and the problem is a pure LP.
+Routes have a handful of stops, so this stays cheap.  Windows are opt-in --
+``Scenario.peak_start_min`` / ``peak_end_min``, or ``--peak-window`` on the
+CLI -- and with none declared the peak binaries disappear.
+
+Nothing here is taken on trust downstream: the plan this module returns is
+replayed by :mod:`evrp.feasibility`, which re-checks the V2G floor, the peak
+window and the resulting time windows against the exact charging curve.
 """
 
 from __future__ import annotations
@@ -122,18 +127,11 @@ def optimise_schedule(
     arc_time = [float(instance.travel_time[seq[k]][seq[k + 1]]) for k in range(len(seq) - 1)]
 
     station_positions = [k for k, n in enumerate(seq) if n != 0 and instance.is_station(n)]
-    windowed = [
-        k
-        for k in station_positions
-        if instance.station_for_node(seq[k]).peak_start is not None
-        and instance.station_for_node(seq[k]).peak_end is not None
-    ]
     # A stop either buys energy or sells it, never both: without that switch
     # the LP would "arbitrage" a single plug-in whenever the sell price beats
     # the buy price, which is not a thing a charger lets you do.  The switch
     # is a binary, so enabling V2G turns the LP into a small MILP.
     needs_mip = charging_config.v2g_enabled and bool(station_positions)
-    del windowed
 
     solver = None
     for backend in (["SCIP", "CBC"] if needs_mip else ["GLOP", "SCIP", "CBC"]):
@@ -147,7 +145,6 @@ def optimise_schedule(
     battery = vehicle.battery_kwh
     reserve = vehicle.min_soc_kwh
     v2g_floor = max(reserve, battery * charging_config.v2g_min_soc)
-    inf = solver.infinity()
 
     n = len(seq)
     arr = [solver.NumVar(0.0, horizon, f"arr{k}") for k in range(n)]
@@ -266,26 +263,3 @@ def optimise_schedule(
         finish_time=arr[n - 1].solution_value(),
         solver=solver.SolverVersion(),
     )
-
-
-def optimise_solution_schedules(
-    instance: Instance,
-    solution,
-    energy_config: EnergyConfig | None = None,
-    charging_config: ChargingConfig | None = None,
-):
-    """Run :func:`optimise_schedule` on every route of a solution.
-
-    Returns ``(results, charge_plans)``; the plans can be fed straight back to
-    :meth:`evrp.solution.Solution.evaluate` so the reported metrics reflect the
-    optimised schedule rather than the solver's own charging rule.
-    """
-    results = []
-    plans: list[dict[int, float]] = []
-    for route in solution.routes:
-        res = optimise_schedule(
-            instance, route, energy_config=energy_config, charging_config=charging_config
-        )
-        results.append(res)
-        plans.append(dict(res.charge_kwh) if res.feasible else {})
-    return results, plans

@@ -117,3 +117,47 @@ def test_charging_consumes_time(corridor):
     # 8 kWh at 100 kW is 4.8 minutes on top of 180 minutes of driving.
     assert result.finish_time > 180.0
     assert result.finish_time == pytest.approx(184.8, abs=0.5)
+
+
+def test_peak_window_confines_when_energy_may_be_sold():
+    """A time-of-use window turns 'how much to sell' into 'when, and how much'.
+
+    The vehicle can reach the charger almost immediately, so with an open
+    station it sells straight away.  Declaring a peak window far in the future
+    forces the schedule to wait for it -- or to sell nothing.
+    """
+    v = VehicleSpec(payload_capacity=100, battery_kwh=20.0, reserve_soc=0.0,
+                    onboard_charge_power_kw=100.0)
+    depot = Node(id=0, x=0, y=0, due_time=100000, kind=NodeKind.DEPOT)
+    customers = [Node(id=1, x=10, y=0, demand=1, due_time=100000)]
+    v2g = ChargingConfig(**{**LINEAR.__dict__, "v2g_enabled": True, "v2g_min_soc": 0.0})
+
+    open_station = [ChargingStation(id=0, x=5, y=0, power_kw=100.0, due_time=100000)]
+    peak_station = [ChargingStation(id=0, x=5, y=0, power_kw=100.0, due_time=100000,
+                                    peak_start=500.0, peak_end=600.0)]
+    open_inst = Instance.build("open", depot, customers, open_station, vehicle=v,
+                               fleet_size=1)
+    peak_inst = Instance.build("peak", depot, customers, peak_station, vehicle=v,
+                               fleet_size=1)
+    station = open_inst.station_indices[0]
+
+    open_result = optimise_schedule(open_inst, [station, 1], FLAT, v2g)
+    peak_result = optimise_schedule(peak_inst, [station, 1], FLAT, v2g)
+    assert open_result.feasible and peak_result.feasible
+    assert open_result.total_discharged > 0
+    if peak_result.total_discharged > 0:
+        # It sold, so it must have waited for the window to open.
+        assert peak_result.service_start[1] >= 500.0 - 1e-6
+    assert peak_result.service_start[1] >= open_result.service_start[1]
+
+
+def test_peak_window_is_off_by_default():
+    """Stations generated without an explicit window buy energy at any time."""
+    from evrp.config import Scenario
+    from evrp.instance import instance_from_scenario
+
+    inst = instance_from_scenario(
+        Scenario(instance_file="data/C101.csv", n_stations=2)
+    )
+    assert all(s.peak_start is None and s.peak_end is None for s in inst.stations)
+    assert all(s.is_peak(0.0) and s.is_peak(999.0) for s in inst.stations)

@@ -105,3 +105,30 @@ def test_markdown_renders_a_table():
 
 def test_markdown_handles_no_rows():
     assert "no results" in to_markdown(pd.DataFrame())
+
+
+def test_make_scenarios_passes_every_knob_through():
+    """A dropped knob is a command line that looks configured but is not."""
+    scenarios = make_scenarios(
+        ["C101"], battery_kwh=25.0, n_stations=9, fleet_size=7, time_limit_s=1.0,
+        seed=3, station_copies=4, station_strategy="grid", station_power_kw=22.0,
+        reserve_soc=0.2,
+    )
+    s = scenarios[0]
+    assert s.solver.station_copies == 4
+    assert s.solver.seed == 3
+    assert s.n_stations == 9 and s.station_strategy == "grid"
+    assert s.station_power_kw == 22.0
+    assert s.fleet_size == 7
+    assert s.vehicle.battery_kwh == 25.0 and s.vehicle.reserve_soc == 0.2
+    # Capacity always comes from the Solomon family, never from the caller.
+    assert s.vehicle.payload_capacity == 200
+    s.validate()
+
+
+def test_make_scenarios_defaults_match_the_committed_benchmarks():
+    """The committed results were produced with these defaults; pin them."""
+    s = make_scenarios(["C101"], battery_kwh=25.0, n_stations=8, time_limit_s=20.0)[0]
+    assert s.solver.station_copies == 2
+    assert s.station_strategy == "kmeans"
+    assert s.vehicle.reserve_soc == 0.10

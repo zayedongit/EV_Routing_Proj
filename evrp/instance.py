@@ -12,7 +12,7 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -232,13 +232,6 @@ class Instance:
 
     def is_station(self, node_index: int) -> bool:
         return self.nodes[node_index].kind is NodeKind.STATION
-
-    def nearest_station(self, node_index: int, exclude: Iterable[int] = ()) -> int | None:
-        """Index of the closest charging station to ``node_index`` (or None)."""
-        candidates = [s for s in self.station_indices if s not in set(exclude)]
-        if not candidates:
-            return None
-        return min(candidates, key=lambda s: self.distance[node_index][s])
 
     def with_stations(self, stations: Sequence[ChargingStation]) -> "Instance":
         """Rebuild the instance with a different charging network."""
@@ -494,11 +487,17 @@ def instance_from_scenario(scenario: Scenario, source: str | None = None) -> Ins
     )
     if scenario.n_stations == 0 or scenario.station_strategy == "none":
         return base
+    peak_window = (
+        (scenario.peak_start_min, scenario.peak_end_min)
+        if scenario.peak_start_min is not None and scenario.peak_end_min is not None
+        else None
+    )
     stations = generate_stations(
         base,
         n_stations=scenario.n_stations,
         strategy=scenario.station_strategy,
         power_kw=scenario.station_power_kw,
         seed=scenario.solver.seed,
+        peak_window=peak_window,
     )
     return base.with_stations(stations)

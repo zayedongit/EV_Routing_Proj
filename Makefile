@@ -5,7 +5,7 @@ PY ?= python
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: help venv install test test-fast lint demo bench sensitivity v2g app clean
+.PHONY: help venv install test test-fast coverage demo bench bounds sensitivity v2g app clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -30,20 +30,32 @@ coverage: ## test suite with a coverage report for the evrp package
 demo: ## solve C101 end to end and write figures to outputs/
 	$(BIN)/python main.py --time-limit 20
 
-bench: ## reproduce results/benchmark.csv
+bench: ## reproduce results/unconstrained/ and results/constrained/
 	$(BIN)/python -m evrp.cli compare \
 		--instances C101 C201 R101 R201 RC101 RC201 \
 		--solvers ortools insertion-ls insertion savings \
-		--battery 40 --stations 6 --time-limit 30 --seed 42 --out results
+		--battery 80 --stations 6 --time-limit 20 --seed 42 \
+		--out results/unconstrained
+	$(BIN)/python -m evrp.cli compare \
+		--instances C101 C201 R101 R201 RC101 RC201 \
+		--solvers ortools insertion-ls insertion savings \
+		--battery 25 --stations 8 --time-limit 20 --seed 42 \
+		--out results/constrained
+
+bounds: ## reproduce results/consumption_bounds.csv
+	$(BIN)/python -m evrp.cli bounds --instances C101 C201 R201 \
+		--battery 25 --stations 8 --station-copies 3 --time-limit 20 --seed 42 \
+		--out results
 
 sensitivity: ## reproduce results/sensitivity.csv
 	$(BIN)/python -m evrp.cli sensitivity \
 		--instances C101 R101 RC101 --solvers ortools \
 		--batteries 80 40 25 18 14 --stations 8 --time-limit 20 --seed 42 --out results
 
-v2g: ## price grid-discharge detours on R201
-	$(BIN)/python -m evrp.cli v2g --instance data/R201.csv --battery 60 \
-		--stations 8 --capacity 1000 --time-limit 20 --out results
+v2g: ## reproduce results/R201-v2g.json
+	$(BIN)/python -m evrp.cli v2g --instance data/R201.csv --capacity 1000 \
+		--battery 60 --stations 8 --time-limit 20 --solver insertion-ls \
+		--out results
 
 app: ## launch the Streamlit dashboard
 	$(BIN)/python -m streamlit run app.py

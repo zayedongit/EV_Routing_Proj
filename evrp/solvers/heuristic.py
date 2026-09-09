@@ -26,7 +26,6 @@ heuristic can never talk itself into an infeasible answer.
 
 from __future__ import annotations
 
-import random
 import time
 from typing import Any, Sequence
 
@@ -258,16 +257,14 @@ class InsertionLocalSearchSolver(_HeuristicBase):
         energy_config: EnergyConfig | None = None,
         charging_config: ChargingConfig | None = None,
         local_search: bool = True,
-        max_no_improve: int = 3,
     ) -> None:
         super().__init__(solver_config, energy_config, charging_config)
         self.local_search = local_search
-        self.max_no_improve = max_no_improve
         if not local_search:
             self.name = "insertion"
 
     # -- construction --------------------------------------------------
-    def _construct(self, instance: Instance, ev: _RouteEvaluator, rng: random.Random):
+    def _construct(self, instance: Instance, ev: _RouteEvaluator):
         d = instance.distance
         remaining = set(instance.customer_indices)
         routes: list[list[int]] = []
@@ -418,14 +415,13 @@ class InsertionLocalSearchSolver(_HeuristicBase):
 
     def _solve(self, instance: Instance) -> tuple[list[list[int]], str, dict[str, Any]]:
         cfg = self.solver_config
-        rng = random.Random(cfg.seed)
         ev = self._evaluator(instance)
         deadline = time.perf_counter() + cfg.time_limit_s
 
         def is_expired() -> bool:
             return time.perf_counter() >= deadline
 
-        routes, unrouted = self._construct(instance, ev, rng)
+        routes, unrouted = self._construct(instance, ev)
         construction_distance = sum(ev.cost(r) for r in routes)
 
         if self.local_search:

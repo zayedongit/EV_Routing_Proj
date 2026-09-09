@@ -200,23 +200,44 @@ def make_scenarios(
     time_limit_s: float = 30.0,
     seed: int = 42,
     name_prefix: str = "base",
+    station_copies: int = 2,
+    station_strategy: str = "kmeans",
+    station_power_kw: float = 50.0,
+    reserve_soc: float = 0.10,
     **scenario_overrides: Any,
 ) -> list[Scenario]:
-    """One scenario per instance, with the Solomon capacity for its family."""
+    """One scenario per instance, with the Solomon capacity for its family.
+
+    Payload capacity is deliberately *not* a parameter: a benchmark comparison
+    is only meaningful at the capacity the Solomon family prescribes, so it is
+    always taken from :func:`solomon_capacity`.  Everything else the caller can
+    vary is passed through -- silently dropping a knob here means a command
+    line that looks like it configured a run but did not.
+    """
     from evrp.config import SolverConfig, VehicleSpec
 
     out: list[Scenario] = []
     for inst in instances:
         capacity = solomon_capacity(inst)
-        vehicle = VehicleSpec(payload_capacity=capacity, battery_kwh=battery_kwh)
+        vehicle = VehicleSpec(
+            payload_capacity=capacity,
+            battery_kwh=battery_kwh,
+            reserve_soc=reserve_soc,
+        )
         out.append(
             Scenario(
                 name=f"{name_prefix}-{inst}",
                 instance_file=str(Path(data_dir) / f"{inst}.csv"),
                 fleet_size=fleet_size,
                 n_stations=n_stations,
+                station_strategy=station_strategy,
+                station_power_kw=station_power_kw,
                 vehicle=vehicle,
-                solver=SolverConfig(time_limit_s=time_limit_s, seed=seed),
+                solver=SolverConfig(
+                    time_limit_s=time_limit_s,
+                    seed=seed,
+                    station_copies=station_copies,
+                ),
                 **scenario_overrides,
             )
         )

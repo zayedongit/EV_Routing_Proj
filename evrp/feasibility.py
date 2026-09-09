@@ -40,6 +40,8 @@ class ViolationKind(str, Enum):
     BATTERY = "battery"
     DURATION = "duration"
     STATION_WINDOW = "station_window"
+    DUPLICATE_VISIT = "duplicate_visit"
+    V2G = "v2g"
     BAD_NODE = "bad_node"
 
 
@@ -146,6 +148,7 @@ def simulate_route(
     charging_config: ChargingConfig | None = None,
     charge_plan: Mapping[int, float] | None = None,
     charge_policy: str = "minimal",
+    discharge_plan: Mapping[int, float] | None = None,
 ) -> RouteSimulation:
     """Replay ``route`` on ``instance`` and report the resulting trajectory.
 
@@ -163,6 +166,12 @@ def simulate_route(
     ``"explicit"`` charge only what ``charge_plan`` says; a station not named in
                    the plan is passed through.  Used to replay a solver's own
                    charging decisions exactly as it made them.
+
+    ``discharge_plan`` is the mirror image for vehicle-to-grid: position -> kWh
+    to push back into the grid at that charging stop.  It is replayed exactly
+    like the charge plan -- the energy leaves the pack, the transfer costs plug
+    time, and selling below the V2G floor raises a violation -- so a V2G plan
+    produced elsewhere is checked here rather than trusted.
     """
     energy_config = energy_config or EnergyConfig()
     charging_config = charging_config or ChargingConfig()
@@ -185,6 +194,26 @@ def simulate_route(
         return sim
     if not body:
         return sim
+
+    # A customer may be served once and once only: the payload profile below
+    # subtracts its demand for every appearance, so a repeat would both
+    # over-deliver and silently corrupt the energy trace.  Depot and charging
+    # stations are exempt -- revisiting a charger is how a long route is made
+    # feasible at all.
+    seen: set[int] = set()
+    for n in body:
+        if instance.nodes[n].kind is not NodeKind.CUSTOMER:
+            continue
+        if n in seen:
+            sim.violations.append(
+                Violation(
+                    ViolationKind.DUPLICATE_VISIT,
+                    n,
+                    1.0,
+                    f"customer {n} is visited more than once on this route",
+                )
+            )
+        seen.add(n)
 
     # -- payload profile -------------------------------------------------
     demands = [instance.nodes[n].demand for n in body]
@@ -274,12 +303,60 @@ def simulate_route(
             )
 
         charged = 0.0
+        discharged = 0.0
         charge_time = 0.0
         soc_departure = soc_arrival
         if info.kind is NodeKind.STATION:
             station = instance.station_for_node(node)
             curve = ChargingCurve(station.power_kw, vehicle, charging_config)
             base = max(soc_arrival, 0.0)
+
+            # -- selling first: it is what the pack arrived with that can go --
+            if discharge_plan is not None and pos in discharge_plan:
+                requested = max(0.0, float(discharge_plan[pos]))
+                floor = max(
+                    vehicle.min_soc_kwh,
+                    vehicle.battery_kwh * charging_config.v2g_min_soc,
+                )
+                if not station.v2g_capable and requested > EPS:
+                    sim.violations.append(
+                        Violation(
+                            ViolationKind.V2G,
+                            node,
+                            requested,
+                            f"station {node} cannot absorb energy but the plan "
+                            f"sells {requested:.2f} kWh here",
+                        )
+                    )
+                if requested > EPS and not station.is_peak(service_start):
+                    sim.violations.append(
+                        Violation(
+                            ViolationKind.V2G,
+                            node,
+                            requested,
+                            f"sells {requested:.2f} kWh at {service_start:.1f}, "
+                            f"outside the station's peak window "
+                            f"[{station.peak_start}, {station.peak_end}]",
+                        )
+                    )
+                if base - requested < floor - EPS:
+                    sim.violations.append(
+                        Violation(
+                            ViolationKind.V2G,
+                            node,
+                            floor - (base - requested),
+                            f"selling {requested:.2f} kWh would leave "
+                            f"{base - requested:.2f} kWh, below the "
+                            f"{floor:.2f} kWh V2G floor",
+                        )
+                    )
+                discharged = requested
+                base = max(0.0, base - discharged)
+                # Energy out of the pack occupies the plug at the same rate it
+                # would go in, which is what makes a V2G stop cost schedule time.
+                charge_time += 60.0 * discharged / curve.marginal_power_kw(base)
+                sim.energy_discharged += discharged
+
             if charge_plan is not None and pos in charge_plan:
                 target = min(vehicle.battery_kwh, base + max(0.0, float(charge_plan[pos])))
             elif charge_policy == "full":
@@ -291,7 +368,7 @@ def simulate_route(
                 target = min(vehicle.battery_kwh, max(base, required))
             charged = max(0.0, target - base)
             if charged > EPS:
-                charge_time = curve.time_for(base, target)
+                charge_time += curve.time_for(base, target)
             soc_departure = base + charged
             sim.energy_charged += charged
             sim.charge_time += charge_time
@@ -313,7 +390,7 @@ def simulate_route(
                 soc_arrival=soc_arrival,
                 soc_departure=soc_departure,
                 charged_kwh=charged,
-                discharged_kwh=0.0,
+                discharged_kwh=discharged,
                 payload_on_arrival=payload_on_arc[pos],
                 distance_from_prev=dist,
                 energy_from_prev=energy,

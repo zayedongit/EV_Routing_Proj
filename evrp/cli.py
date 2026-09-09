@@ -56,6 +56,8 @@ def _scenario_from_args(args, name: str) -> Scenario:
         n_stations=args.stations,
         station_strategy=args.station_strategy,
         station_power_kw=args.station_power,
+        peak_start_min=args.peak_window[0] if args.peak_window else None,
+        peak_end_min=args.peak_window[1] if args.peak_window else None,
         vehicle=VehicleSpec(
             payload_capacity=capacity,
             battery_kwh=args.battery,
@@ -134,6 +136,10 @@ def cmd_compare(args) -> int:
         time_limit_s=args.time_limit,
         seed=args.seed,
         name_prefix="compare",
+        station_copies=args.station_copies,
+        station_strategy=args.station_strategy,
+        station_power_kw=args.station_power,
+        reserve_soc=args.reserve,
     )
     result = run_benchmark(scenarios, solvers=args.solvers, data_dir=args.data_dir)
     frame = result.to_frame()
@@ -174,6 +180,10 @@ def cmd_sensitivity(args) -> int:
             time_limit_s=args.time_limit,
             seed=args.seed,
             name_prefix=f"battery{battery:g}",
+            station_copies=args.station_copies,
+            station_strategy=args.station_strategy,
+            station_power_kw=args.station_power,
+            reserve_soc=args.reserve,
         )
         print(f"battery = {battery:g} kWh")
         result = run_benchmark(scenarios, solvers=args.solvers, data_dir=args.data_dir)
@@ -353,13 +363,18 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--instance", default="data/C101.csv", help="Solomon CSV file")
         p.add_argument("--fleet", type=int, default=25, help="number of vehicles available")
         p.add_argument("--capacity", type=float, default=None,
-                       help="payload capacity (default: Solomon value for the family)")
+                       help="payload capacity; ignored by compare/sensitivity/bounds, "
+                            "which always use the Solomon value for the family")
         p.add_argument("--battery", type=float, default=40.0, help="usable pack size in kWh")
         p.add_argument("--reserve", type=float, default=0.10, help="fraction of pack held back")
         p.add_argument("--stations", type=int, default=6, help="number of charging stations")
         p.add_argument("--station-power", type=float, default=50.0, help="charger power in kW")
         p.add_argument("--station-strategy", default="kmeans",
                        choices=["kmeans", "grid", "random", "none"])
+        p.add_argument("--peak-window", nargs=2, type=float, default=None,
+                       metavar=("START", "END"),
+                       help="minutes from day start during which chargers buy "
+                            "energy back; unset means any time")
         p.add_argument("--station-copies", type=int, default=2,
                        help="visits allowed per station in the CP model")
         p.add_argument("--time-limit", type=float, default=30.0, help="solver budget in seconds")

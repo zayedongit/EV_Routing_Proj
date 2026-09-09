@@ -143,6 +143,13 @@ magnitudes. Every solver's output goes through it before any number is
 reported, and the heuristics use it as their acceptance test, so no search can
 talk itself into an infeasible answer.
 
+It also replays the schedule LP's decisions rather than trusting them: a
+`discharge_plan` puts the sold energy back through the same state-of-charge
+recursion, and selling below the V2G floor, at a station that cannot absorb
+energy, or outside a declared peak window each raises a violation. A repeat
+visit to a customer on one route is a violation too; a customer served by two
+different routes is caught one level up, in `Solution.evaluate`.
+
 ## 7. Known approximations
 
 * Distances are straight-line, not road-network. Every solver and the simulator
@@ -152,6 +159,7 @@ talk itself into an infeasible answer.
   default), because Solomon instances have none. Placement is seeded and
   reported; it is an input, not a decision variable.
 * Queueing at chargers is not modelled: a station is always free.
-* The V2G tariff is a flat price inside an optional peak window, not a real
-  time-of-use curve or a capacity market.
+* The V2G tariff is a flat price inside an optional peak window
+  (`Scenario.peak_start_min` / `peak_end_min`, or `--peak-window`), not a real
+  time-of-use curve or a capacity market.  Windows are off by default.
 * Consumption ignores speed, gradient, temperature and auxiliary loads.

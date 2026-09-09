@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import abc
 import time
-from contextlib import contextmanager
 
 from evrp.config import ChargingConfig, EnergyConfig, SolverConfig
 from evrp.instance import Instance
@@ -78,10 +77,3 @@ class Solver(abc.ABC):
             charge_policy=meta.get("charge_policy", "minimal"),
         )
         return solution
-
-
-@contextmanager
-def deadline(seconds: float):
-    """Small helper giving heuristics a wall-clock budget."""
-    end = time.perf_counter() + seconds
-    yield lambda: time.perf_counter() >= end

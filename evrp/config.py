@@ -215,6 +215,12 @@ class Scenario:
     n_stations: int = 6
     station_strategy: str = "kmeans"
     station_power_kw: float = 50.0
+    # Optional time-of-use window, in minutes from the start of the day, during
+    # which a charger will buy energy back.  Left unset, stations accept V2G at
+    # any time; set, it becomes a hard constraint in the schedule MILP and is
+    # re-checked by the route simulator.
+    peak_start_min: float | None = None
+    peak_end_min: float | None = None
     vehicle: VehicleSpec = field(default_factory=VehicleSpec)
     energy: EnergyConfig = field(default_factory=EnergyConfig)
     charging: ChargingConfig = field(default_factory=ChargingConfig)
@@ -233,6 +239,16 @@ class Scenario:
             raise ConfigError(
                 "station_strategy must be one of kmeans|grid|random|none"
             )
+        if (self.peak_start_min is None) != (self.peak_end_min is None):
+            raise ConfigError(
+                "peak_start_min and peak_end_min must be set together"
+            )
+        if (
+            self.peak_start_min is not None
+            and self.peak_end_min is not None
+            and self.peak_start_min >= self.peak_end_min
+        ):
+            raise ConfigError("peak_start_min must be < peak_end_min")
         self.vehicle.validate()
         self.energy.validate()
         self.charging.validate()

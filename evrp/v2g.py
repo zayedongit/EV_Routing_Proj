@@ -173,6 +173,7 @@ def apply_v2g(
     report = V2GReport(baseline_distance=solution.metrics.total_distance)
     new_routes: list[list[int]] = []
     plans: list[dict[int, float]] = []
+    sales: list[dict[int, float]] = []
 
     for i, route in enumerate(solution.routes):
         decision = best_v2g_detour(
@@ -183,6 +184,7 @@ def apply_v2g(
         if decision.accepted and decision.schedule is not None:
             new_routes.append(decision.route)
             plans.append(dict(decision.schedule.charge_kwh))
+            sales.append(dict(decision.schedule.discharge_kwh))
             report.total_discharged_kwh += decision.discharged_kwh
             report.total_revenue += decision.revenue
             report.total_energy_cost += decision.energy_cost
@@ -190,6 +192,7 @@ def apply_v2g(
         else:
             new_routes.append(list(route))
             plans.append({})
+            sales.append({})
 
     out = Solution(
         instance_name=solution.instance_name,
@@ -199,16 +202,20 @@ def apply_v2g(
         status=solution.status,
         meta={**solution.meta, "v2g": report.to_dict()},
     )
+    # The schedule LP decided how much to buy and sell; the simulator replays
+    # both and is free to reject them.  Nothing about the V2G plan is taken on
+    # trust: if selling that much would break the floor or push the route past a
+    # time window, it shows up as a violation like any other.
     out.evaluate(
         instance,
         energy_config=energy_config,
         charging_config=v2g_cfg,
         charge_plans=plans,
         charge_policy="minimal",
+        discharge_plans=sales,
     )
-    # The simulator does not model selling, so fold the scheduler's decisions in.
-    out.metrics.energy_discharged_kwh = report.total_discharged_kwh
-    out.metrics.v2g_revenue = report.total_revenue
+    report.total_discharged_kwh = out.metrics.energy_discharged_kwh
+    report.total_revenue = out.metrics.energy_discharged_kwh * v2g_cfg.v2g_price
     report.distance = out.metrics.total_distance
     out.meta["v2g"] = report.to_dict()
     return out, report

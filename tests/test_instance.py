@@ -166,3 +166,15 @@ def test_with_stations_preserves_customers(tiny):
     assert rebuilt.n_customers == tiny.n_customers
     assert rebuilt.station_indices == (4,)
     assert rebuilt.distance.shape == (5, 5)
+
+
+def test_with_vehicle_rebuilds_the_matrices(tiny):
+    """Sibling of ``with_stations``: swap the fleet, keep the geography."""
+    slower = VehicleSpec(payload_capacity=50.0, battery_kwh=5.0, speed_km_per_min=0.5)
+    rebuilt = tiny.with_vehicle(slower, fleet_size=2)
+    assert rebuilt.vehicle.battery_kwh == 5.0
+    assert rebuilt.fleet_size == 2
+    assert rebuilt.n_customers == tiny.n_customers
+    # Travel time follows the new speed; distance does not change.
+    assert np.allclose(rebuilt.distance, tiny.distance)
+    assert np.allclose(rebuilt.travel_time, tiny.travel_time * 2.0)

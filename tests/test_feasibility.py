@@ -179,3 +179,78 @@ def test_route_is_feasible_helper(tiny):
         tiny, [1, 2],
         energy_config=EnergyConfig(base_kwh_per_km=0.1, payload_kwh_per_km_per_kg=0.0),
     )
+
+
+# -- duplicate visits ------------------------------------------------------
+
+def test_visiting_a_customer_twice_is_a_violation(tiny):
+    """A repeat visit would deliver the same parcel twice and double-count its
+    weight in the payload profile, so it has to be caught rather than priced."""
+    result = sim(tiny, [1, 2, 1])
+    dupes = result.violations_of(ViolationKind.DUPLICATE_VISIT)
+    assert len(dupes) == 1
+    assert dupes[0].node == 1
+    assert not result.feasible
+
+
+def test_revisiting_a_charging_station_is_allowed(tiny_with_station):
+    """Charging out and charging back is the whole point of station replicas."""
+    station = tiny_with_station.station_indices[0]
+    result = sim(tiny_with_station, [station, 1, station])
+    assert not result.violations_of(ViolationKind.DUPLICATE_VISIT)
+
+
+def test_depot_sentinels_are_not_duplicates(tiny):
+    assert not sim(tiny, [0, 1, 2, 0]).violations_of(ViolationKind.DUPLICATE_VISIT)
+
+
+# -- vehicle-to-grid discharge --------------------------------------------
+
+def test_discharge_plan_leaves_the_pack_and_costs_plug_time(tiny_with_station):
+    station = tiny_with_station.station_indices[0]
+    without = sim(tiny_with_station, [1, station, 3], charge_policy="none")
+    with_sale = sim(tiny_with_station, [1, station, 3], charge_policy="none",
+                    discharge_plan={1: 2.0})
+    assert with_sale.energy_discharged == pytest.approx(2.0)
+    assert with_sale.stops[1].discharged_kwh == pytest.approx(2.0)
+    # 2 kWh out of the pack, and the plug is occupied while it happens.
+    assert with_sale.stops[1].soc_departure == pytest.approx(
+        without.stops[1].soc_departure - 2.0
+    )
+    assert with_sale.charge_time > without.charge_time
+    assert with_sale.end_time > without.end_time
+
+
+def test_selling_below_the_v2g_floor_is_a_violation(tiny_with_station):
+    station = tiny_with_station.station_indices[0]
+    result = simulate_route(
+        tiny_with_station, [1, station, 3],
+        energy_config=EnergyConfig(base_kwh_per_km=0.1, payload_kwh_per_km_per_kg=0.0),
+        charging_config=ChargingConfig(curve="linear", fixed_time_min=0.0,
+                                       v2g_min_soc=0.9),
+        charge_policy="none",
+        discharge_plan={1: 5.0},
+    )
+    assert result.violations_of(ViolationKind.V2G)
+    assert not result.feasible
+
+
+def test_selling_outside_a_declared_peak_window_is_a_violation(vehicle):
+    """A station with a time-of-use window only buys energy inside it."""
+    depot = Node(id=0, x=0, y=0, due_time=100000, kind=NodeKind.DEPOT)
+    customers = [Node(id=1, x=10, y=0, demand=1, due_time=100000)]
+    stations = [ChargingStation(id=0, x=5, y=0, power_kw=100.0, due_time=100000,
+                                peak_start=500.0, peak_end=600.0)]
+    inst = Instance.build("peak", depot, customers, stations, vehicle=vehicle,
+                          fleet_size=1)
+    station = inst.station_indices[0]
+    # The vehicle reaches the charger after 5 minutes, long before the window.
+    result = sim(inst, [station, 1], charge_policy="none", discharge_plan={0: 1.0})
+    assert result.violations_of(ViolationKind.V2G)
+
+
+def test_no_discharge_plan_means_no_discharge(tiny_with_station):
+    station = tiny_with_station.station_indices[0]
+    result = sim(tiny_with_station, [1, station, 3])
+    assert result.energy_discharged == 0.0
+    assert all(s.discharged_kwh == 0.0 for s in result.stops)

@@ -69,3 +69,21 @@ def test_to_json_writes_a_file(tiny, tmp_path):
 def test_metrics_net_energy_cost():
     m = SolutionMetrics(energy_cost=10.0, v2g_revenue=4.0)
     assert m.net_energy_cost == pytest.approx(6.0)
+
+
+def test_a_customer_served_by_two_routes_is_reported(tiny):
+    """Each route is legal on its own; only the solution as a whole is wrong."""
+    sol = Solution(instance_name="tiny", solver="double", routes=[[1, 2], [2, 3]])
+    sol.evaluate(tiny, FLAT, LINEAR)
+    assert sol.metrics.n_violations == 0          # no single route is broken
+    assert sol.metrics.duplicate_customers == 1
+    assert sol.metrics.customers_served == 3
+    assert not sol.feasible
+    assert "more than one route" in sol.summary()
+
+
+def test_a_clean_solution_reports_no_duplicates(tiny):
+    sol = Solution(instance_name="tiny", solver="m", routes=[[1, 2], [3]])
+    sol.evaluate(tiny, FLAT, LINEAR)
+    assert sol.metrics.duplicate_customers == 0
+    assert sol.feasible

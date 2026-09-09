@@ -89,3 +89,20 @@ def test_scenario_with_overrides_is_a_copy():
     a = Scenario(name="a")
     b = a.with_overrides(fleet_size=99)
     assert a.fleet_size != 99 and b.fleet_size == 99
+
+
+def test_peak_window_bounds_must_be_consistent():
+    with pytest.raises(ConfigError):
+        Scenario(peak_start_min=100.0).validate()          # end missing
+    with pytest.raises(ConfigError):
+        Scenario(peak_end_min=100.0).validate()            # start missing
+    with pytest.raises(ConfigError):
+        Scenario(peak_start_min=200.0, peak_end_min=100.0).validate()
+    Scenario(peak_start_min=100.0, peak_end_min=200.0).validate()
+
+
+def test_peak_window_survives_a_json_round_trip(tmp_path):
+    scenario = Scenario(name="peak", peak_start_min=600.0, peak_end_min=900.0)
+    path = tmp_path / "s.json"
+    scenario.to_json(path)
+    assert Scenario.from_json(path) == scenario

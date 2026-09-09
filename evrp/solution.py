@@ -29,6 +29,7 @@ class SolutionMetrics:
     customers_total: int = 0
     charging_stops: int = 0
     min_soc_kwh: float = 0.0
+    duplicate_customers: int = 0
     energy_cost: float = 0.0
     v2g_revenue: float = 0.0
     n_violations: int = 0
@@ -75,16 +76,23 @@ class Solution:
         charging_config: ChargingConfig | None = None,
         charge_policy: str = "minimal",
         charge_plans: Sequence[dict[int, float]] | None = None,
+        discharge_plans: Sequence[dict[int, float]] | None = None,
     ) -> "Solution":
         """Re-simulate every route and refresh :attr:`metrics`."""
         charging_config = charging_config or ChargingConfig()
         self.simulations = []
         m = SolutionMetrics(customers_total=instance.n_customers)
         served: set[int] = set()
+        duplicated: set[int] = set()
         min_soc = float("inf")
 
         for i, route in enumerate(self.routes):
             plan = charge_plans[i] if charge_plans is not None and i < len(charge_plans) else None
+            sell = (
+                discharge_plans[i]
+                if discharge_plans is not None and i < len(discharge_plans)
+                else None
+            )
             sim = simulate_route(
                 instance,
                 route,
@@ -92,6 +100,7 @@ class Solution:
                 charging_config=charging_config,
                 charge_plan=plan,
                 charge_policy=charge_policy,
+                discharge_plan=sell,
             )
             self.simulations.append(sim)
             # Count violations first: a route rejected before it starts (an
@@ -110,10 +119,18 @@ class Solution:
             m.energy_discharged_kwh += sim.energy_discharged
             m.charging_stops += sim.n_charging_stops
             m.vehicles_used += 1
-            served.update(n for n in sim.route if instance.nodes[n].kind.value == "customer")
+            # Cross-route duplicates: the per-route simulator can only see its
+            # own route, so serving one customer from two vehicles has to be
+            # caught here.
+            on_route = {
+                n for n in sim.route if instance.nodes[n].kind.value == "customer"
+            }
+            duplicated |= served & on_route
+            served |= on_route
             min_soc = min(min_soc, sim.min_soc)
 
         m.customers_served = len(served)
+        m.duplicate_customers = len(duplicated)
         m.min_soc_kwh = 0.0 if min_soc == float("inf") else min_soc
         m.energy_cost = m.energy_charged_kwh * charging_config.energy_price
         m.v2g_revenue = m.energy_discharged_kwh * charging_config.v2g_price
@@ -126,6 +143,7 @@ class Solution:
         return (
             self.metrics.n_violations == 0
             and self.metrics.served_all
+            and self.metrics.duplicate_customers == 0
             and bool(self.routes)
         )
 
@@ -174,6 +192,10 @@ class Solution:
             if not m.served_all:
                 reasons.append(
                     f"{m.customers_total - m.customers_served} customer(s) unserved"
+                )
+            if m.duplicate_customers:
+                reasons.append(
+                    f"{m.duplicate_customers} customer(s) served by more than one route"
                 )
             if not self.routes:
                 reasons.append("no routes")

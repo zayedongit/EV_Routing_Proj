@@ -79,7 +79,7 @@ evrp/
 
 app.py             Streamlit dashboard
 main.py            end-to-end demo (also runs the original task 1/2 solvers)
-tests/             177 tests, 90 % statement coverage of evrp/
+tests/             193 tests, 92 % statement coverage of evrp/
 docs/MODELLING.md  the modelling decisions and their justifications
 ```
 
@@ -144,7 +144,9 @@ simulator, so a heuristic cannot talk itself into an infeasible answer.
 | CC-CV taper | `ChargingCurve`, exact in the simulator, conservatively bounded in the CP model |
 | load-dependent consumption | exact in the simulator; payload-independent upper bound in the CP model |
 | shift length / depot closing | duration checks in the simulator |
-| V2G floor | LP constraint, only energy above `v2g_min_soc` may be sold |
+| V2G floor | LP constraint, only energy above `v2g_min_soc` may be sold; re-checked by the simulator |
+| V2G peak window | opt-in (`--peak-window`); a MILP binary in the schedule, re-checked by the simulator |
+| one visit per customer | simulator flags a repeat on a route; `Solution` flags one served by two routes |
 
 ## Results
 
@@ -196,7 +198,7 @@ so the other rows are not comparable with published values.
 ```bash
 python -m evrp.cli compare --instances C101 C201 R101 R201 RC101 RC201 \
   --solvers ortools insertion-ls insertion savings \
-  --battery 25 --stations 8 --station-copies 3 --time-limit 20 --seed 42 \
+  --battery 25 --stations 8 --time-limit 20 --seed 42 \
   --out results/constrained
 ```
 
@@ -261,7 +263,7 @@ Raw output in `results/consumption_bounds.csv`.
 
 ```bash
 python -m evrp.cli sensitivity --instances C101 R101 RC101 --solvers ortools \
-  --batteries 80 40 25 18 14 --stations 8 --station-copies 3 \
+  --batteries 80 40 25 18 14 --stations 8 \
   --time-limit 20 --seed 42 --out results
 ```
 
@@ -347,7 +349,7 @@ python -m pytest              # everything
 python -m pytest -m "not slow"  # skip benchmark-scale checks
 ```
 
-177 tests, 90 % statement coverage of `evrp/`. The suite is not only about
+193 tests, 92 % statement coverage of `evrp/`. The suite is not only about
 coverage; several of the tests exist because they caught real bugs:
 
 * the simulator is checked against hand-computed distances, times, and states
@@ -360,6 +362,11 @@ coverage; several of the tests exist because they caught real bugs:
 * the conservative consumption bound is asserted to produce zero violations;
 * a regression test pins the charging-time cost of a stop, and another asserts
   that a horizon too short for the recharge yields no plan;
+* a customer visited twice on a route, or served by two different routes, is
+  rejected — while revisiting a charger stays legal;
+* a replayed vehicle-to-grid sale drains the pack, costs plug time, and is
+  rejected below the reserve floor or outside a declared peak window;
+* every benchmark knob is asserted to reach the `Scenario` it claims to set;
 * the Streamlit app is driven end to end through `streamlit.testing`.
 
 ## Bugs this replaced

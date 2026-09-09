@@ -57,8 +57,12 @@ class ChargingCurve:
     ``cc_end_soc`` the pack accepts the full power of the slower of (station,
     on-board charger); above it, the effective power drops to
     ``taper_power_fraction * P``.  The resulting time function is convex and
-    piecewise linear in the energy delivered, which is what lets the schedule
-    LP represent it exactly with two segment variables.
+    piecewise linear in the energy delivered.
+
+    The exact curve is what the route simulator uses.  The two approximate
+    models -- the CP routing model and the schedule LP -- both collapse it to
+    the single, slowest (taper) power, which over-estimates charging time and
+    therefore never lets either of them accept a plan the simulator rejects.
     """
 
     def __init__(
@@ -124,8 +128,11 @@ class ChargingCurve:
     def segments(self, soc_from_kwh: float) -> list[tuple[float, float]]:
         """``[(energy_capacity_kwh, power_kw), ...]`` of the remaining segments.
 
-        Used by the schedule LP, which needs the piecewise curve as a set of
-        linear pieces rather than as a callable.
+        The curve as linear pieces rather than as a callable, for a caller that
+        wants to embed it in a linear model.  Nothing in the package uses it
+        today: the schedule LP deliberately takes the single conservative taper
+        power instead, because that keeps the LP relaxation-safe against the
+        exact simulator.
         """
         soc = min(max(soc_from_kwh, 0.0), self.battery_kwh)
         out: list[tuple[float, float]] = []
