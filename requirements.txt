@@ -1,6 +1,23 @@
-ortools==9.8.3296
-streamlit==1.28.0
-matplotlib==3.7.1
-numpy==1.24.3
-pandas==2.0.3
-pydeck==0.8.0
+# Runtime dependencies.
+#
+# Ranges rather than exact pins, so the project installs on a current
+# interpreter.  The original pins (ortools 9.8, numpy 1.24) had no wheels for
+# Python 3.11+ and could not be installed at all.
+#
+# "exercised" below means the full test suite was actually run against that
+# version.  Where two versions are listed, both ends of the range were run;
+# where one is listed, the lower bound is a believed-compatible minimum that
+# has not been re-verified, and the upper bound guards the next major release.
+#
+# For an exactly reproducible environment -- the one that produced the numbers
+# in results/ -- install requirements-lock.txt instead.
+
+ortools>=9.10,<10        # exercised: 9.15.6755
+numpy>=1.26,<3           # exercised: 2.5.3
+pandas>=2.3,<4           # exercised: 2.3.3 and 3.0.5
+matplotlib>=3.8,<4       # exercised: 3.11.1
+
+# Dashboard.  pydeck is not imported anywhere in this project; it arrives as a
+# dependency of streamlit and does not need to be declared here.
+streamlit>=1.36,<2       # exercised: 1.63.0
+plotly>=5.24,<8          # exercised: 5.24.1 and 7.0.0

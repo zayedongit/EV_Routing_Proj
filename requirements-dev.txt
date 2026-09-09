@@ -1,0 +1,5 @@
+# Development and CI extras.
+-r requirements.txt
+
+pytest>=8.4,<10          # exercised: 8.4.2 and 9.1.1
+pytest-cov>=6.3,<8       # exercised: 6.3.0 and 7.1.0
